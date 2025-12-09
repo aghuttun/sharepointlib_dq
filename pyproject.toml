@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sharepointlib_dq"
+version = "0.0.1"
+requires-python = ">=3.10"
+description = "A library providing a standardised data quality tracking in lakehouse environments. Designed for use within Databricks, where PySpark is already available."
+readme = "README.md"
+authors = [{ name = "Paulo Portela", email = "portela.paulo@gmail.com" }]
+maintainers = [{ name = "Paulo Portela", email = "portela.paulo@gmail.com" }]
+license = "BSD-3-Clause"
+keywords = ["SharePoint", "DQ", "Python", "Configuration", "Lakehouse", "DataBricks"]
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: MacOS :: MacOS X",
+]
+dependencies = ["requests"]
+
+[project.optional-dependencies]
+dev = ["twine", "build"]
+spark = ["pyspark>=3.5.0"]
+
+[tool.setuptools]
+packages = ["sharepointlib_dq", "sharepointlib_dq.core", "sharepointlib_dq.notifier"]
+package-dir = { "" = "src" }
+
+[project.urls]
+Homepage = "https://github.com/aghuttun/sharepointlib_dq"
+Documentation = "https://github.com/aghuttun/sharepointlib_dq/blob/main/README.md"
