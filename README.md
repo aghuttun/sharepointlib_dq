@@ -86,6 +86,10 @@ metadata = SPFileMetadata(alias="My_File.xlsx", sheet="Customers")
 # Build the metadata object (meta_dict -> metadata)
 metadata.from_dict(d=meta_dict)
 
+# Convert metadata to JSON (for logs/audit)
+metadata_json = metadata.to_json()
+print(metadata_json)
+
 # Add the row_count (number of rows in the file)
 metadata.row_count = 1500
 
@@ -97,6 +101,78 @@ dq_writer.write_metadata(metadata=metadata)
 
 # Failure case (rejection reason provided -> status = FAIL)
 dq_writer.write_metadata(metadata=metadata, reason="DQ FAIL: EMPTY FILE")
+```
+
+Minimal-effort way to combine `sharepointlib` + `sharepointlib_dq`:
+
+1. Use `sharepointlib` to list/download files.
+2. Reuse the same file metadata dictionary (`list_dir` output row).
+3. Build `SPFileMetadata` with `from_dict`.
+4. Wrap your validation/processing in `try/except` and write DQ failures with `DQWriter`.
+
+```python
+import pandas as pd
+import sharepointlib
+from sharepointlib_dq.core import DQStatusCode, DQWriter, SPFileMetadata
+
+# 1. Clients
+sharepoint = sharepointlib.SharePoint(
+    client_id=client_id,
+    tenant_id=tenant_id,
+    client_secret=client_secret,
+    sp_domain=sp_domain,
+)
+dq_writer = DQWriter(table_name="workspace.default.sharepoint_uploader_monitoring_logs")
+
+# 2. Metadata from sharepointlib (same pattern used in the loader)
+response = sharepoint.list_dir(drive_id=drive_id, path="UK Sellout/SDI")
+row = next(x for x in response.content if x.get("alias") == "Report.csv")
+
+metadata = SPFileMetadata(alias="Report.csv", sheet="in")
+metadata.from_dict(row)
+
+try:
+    # 3. Your processing/validation
+    df = pd.read_csv(f"/dbfs/tmp/{metadata.name}", skiprows=1)
+    required_columns = {
+        "Week",
+        "Item Colourway Name",
+        "Units - TY",
+        "Net Sales £ - TY",
+        "Contribution £ - TY",
+    }
+
+    missing = required_columns - set(df.columns)
+    extra = set(df.columns) - required_columns
+    if missing or extra:
+        raise ValueError(f"Invalid columns! Missing: {missing} | Extra: {extra}")
+
+    # Optional success log
+    metadata.row_count = len(df)
+    dq_writer.write_metadata(metadata=metadata)
+
+except Exception as error:
+    # 4. Failure log in Delta table
+    reason = DQStatusCode.get_description("SchemaMismatch")
+    dq_writer.write_metadata(metadata=metadata, reason=f"{reason} | {error}")
+    raise
+```
+
+Databricks cell-ready (ultra-short):
+
+```python
+import sharepointlib
+from sharepointlib_dq.core import DQStatusCode, DQWriter, SPFileMetadata
+
+sp = sharepointlib.SharePoint(client_id=client_id, tenant_id=tenant_id, client_secret=client_secret, sp_domain=sp_domain)
+dq = DQWriter("workspace.default.sharepoint_uploader_monitoring_logs")
+meta = SPFileMetadata(alias="42 - Weekly Sell Out.csv", sheet="in")
+meta.from_dict(next(x for x in sp.list_dir(drive_id=drive_id, path="UK Sellout/SDI").content if x.get("alias") == meta.alias))
+
+try: validate_file_columns(meta.name)
+except Exception as err:
+    dq.write_metadata(meta, reason=f"{DQStatusCode.get_description('SchemaMismatch')} | {err}")
+    raise
 ```
 
 ### Email Notifications
@@ -111,6 +187,9 @@ notifier = EmailNotifier(
     tenant_id=tenant_id,
     sender_email="sender@example.com"
 )
+
+# Renew token manually (optional)
+notifier.renew_token()
 
 # Send email notification
 status_code = notifier.send_email(
@@ -137,8 +216,22 @@ message = EmailTemplates.technical_error(
     error_message
 )
 
+# Generate an informational alert template
+info_message = EmailTemplates.informational_alert(
+    recipient_name,
+    "The process completed with minor warnings."
+)
+
+# Generate a validation follow-up template
+followup_message = EmailTemplates.validation_followup(
+    recipient_name,
+    "Please confirm whether record 123 should be rejected."
+)
+
 # Print result
 print(message)  # Dear Peter Parker...
+print(info_message)
+print(followup_message)
 ```
 
 ## Installation
